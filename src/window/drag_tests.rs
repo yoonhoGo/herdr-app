@@ -77,6 +77,51 @@ fn divider_interaction(cx: &mut gpui::TestAppContext) {
 }
 
 #[test]
+fn dragging_between_fixed_panels_keeps_the_tab_width() {
+    in_own_process("fixed_panel_divider");
+}
+
+#[gpui::test]
+fn fixed_panel_divider(cx: &mut gpui::TestAppContext) {
+    use gpui::{point, px, size, Modifiers, MouseButton, VisualTestContext};
+    use serde_json::json;
+    if !running_alone("fixed_panel_divider") { return; }
+    let layout = json!({ "id": "root", "type": "row", "gap": 8, "children": [
+        { "id": "tab", "type": "block", "content": { "mod": "divider-probe" } },
+        { "id": "files", "type": "block", "size": { "px": 160 }, "min": 120,
+          "content": { "mod": "divider-probe" } },
+        { "id": "workboard", "type": "block", "size": { "px": 180 }, "min": 140,
+          "content": { "mod": "divider-probe" } }
+    ] });
+    let (view, cx) = open_window(cx, "divider-probe", "export default () => null;", layout);
+    let zoom = super::settings::zoom();
+    cx.simulate_resize(size(px(900.0 * zoom), px(240.0 * zoom)));
+    let draw = |cx: &mut VisualTestContext| cx.update(|window, cx| window.draw(cx).clear(cx));
+    let widths = |cx: &mut VisualTestContext| view.read_with(cx, |this, _| {
+        let bounds = this.bounds.borrow();
+        ["tab", "files", "workboard"].map(|id| (f32::from(bounds[id].size.width) / zoom).round())
+    });
+    draw(cx);
+    let before = widths(cx);
+    let edge = view.read_with(cx, |this, _| {
+        let bounds = this.bounds.borrow();
+        (f32::from(bounds["files"].right()) + f32::from(bounds["workboard"].left())) / 2.0
+    });
+    let at = |delta| point(px(edge + delta * zoom), px(90.0 * zoom));
+    cx.simulate_mouse_down(at(0.0), MouseButton::Left, Modifiers::default());
+    cx.simulate_mouse_move(at(25.0), MouseButton::Left, Modifiers::default());
+    draw(cx);
+    assert_eq!(widths(cx), [before[0], 185.0, 155.0]);
+    cx.simulate_mouse_move(at(90.0), MouseButton::Left, Modifiers::default());
+    draw(cx);
+    assert_eq!(widths(cx), [before[0], 200.0, 140.0]);
+    cx.simulate_mouse_move(at(-90.0), MouseButton::Left, Modifiers::default());
+    cx.simulate_mouse_up(at(-90.0), MouseButton::Left, Modifiers::default());
+    draw(cx);
+    assert_eq!(widths(cx), [before[0], 120.0, 220.0]);
+}
+
+#[test]
 fn dragging_squeezed_layout_blocks_never_crashes() {
     in_own_process("squeezed_layout_drag");
 }

@@ -254,6 +254,8 @@ Properties any node can have:
 - `padding`: space inside the node's edge, px: `16` or `[vertical, horizontal]`.
 - row/column: `gap` (px between children), `divider` (`{ "width": 1, "color": "border" }`),
   `resizable` (default true: drag the boundary). This applies to that row/column only.
+  Dragging between two fixed-size children redistributes their combined size, within
+  both children's limits, without resizing the other children.
   On a resizable boundary, the divider's optional `hover` color shows while the pointer
   is over it and `active` while dragging (default: `hover`), e.g.
   `{ "width": 1, "color": "#00000000", "hover": "accent" }` shows a line only then.

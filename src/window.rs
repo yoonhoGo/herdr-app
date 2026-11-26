@@ -4897,9 +4897,9 @@ impl AppWindow {
         let bounds = self.bounds.borrow();
         let (Some(ba), Some(bb)) = (bounds.get(&a.id).copied(), bounds.get(&b.id).copied()) else { return };
         drop(bounds);
-        let (start, p) = match axis {
-            Axis::Row => (f32::from(ba.left()), f32::from(pos.x)),
-            Axis::Column => (f32::from(ba.top()), f32::from(pos.y)),
+        let (start, next, p) = match axis {
+            Axis::Row => (f32::from(ba.left()), f32::from(bb.left()), f32::from(pos.x)),
+            Axis::Column => (f32::from(ba.top()), f32::from(bb.top()), f32::from(pos.y)),
         };
         let (la, lb) = match axis {
             Axis::Row => (f32::from(ba.size.width), f32::from(bb.size.width)),
@@ -4911,16 +4911,26 @@ impl AppWindow {
         let total = la + lb;
         // Squeezed and zero-size siblings cannot both keep the drag minimum.
         if total <= 48.0 { return; }
-        let mut new_a = (p - start).clamp(24.0, total - 24.0);
-        if let Some(min) = a.min {
-            new_a = new_a.max(min);
-        }
-        if let Some(max) = a.max {
-            new_a = new_a.min(max);
-        }
-        let new_a = new_a.min(total - 24.0);
-        let (a_id, b_id) = (a.id.clone(), b.id.clone());
         let (sa, sb) = (a.size, b.size);
+        let fixed_pair = matches!((sa, sb), (Some(Span::Px { .. }), Some(Span::Px { .. })));
+        let new_a = if fixed_pair {
+            // Transfer space between the two panels, without resizing other siblings.
+            let min = a.min.unwrap_or(24.0).max(24.0).max(total - b.max.unwrap_or(f32::INFINITY));
+            let max = a.max.unwrap_or(f32::INFINITY).min(total - b.min.unwrap_or(24.0).max(24.0));
+            if min > max { return; }
+            let half_gap = (next / zoom - start - la) / 2.0;
+            (p - start - half_gap).round().clamp(min, max)
+        } else {
+            let mut new_a = (p - start).clamp(24.0, total - 24.0);
+            if let Some(min) = a.min {
+                new_a = new_a.max(min);
+            }
+            if let Some(max) = a.max {
+                new_a = new_a.min(max);
+            }
+            new_a.min(total - 24.0)
+        };
+        let (a_id, b_id) = (a.id.clone(), b.id.clone());
         let Some(parent) = self.find_node_mut(&container) else { return };
         let Some(children) = parent.children_mut() else { return };
         let set = |children: &mut Vec<Node>, id: &str, s: Span| {
@@ -4929,6 +4939,10 @@ impl AppWindow {
             }
         };
         match (sa, sb) {
+            (Some(Span::Px { .. }), Some(Span::Px { .. })) => {
+                set(children, &a_id, Span::Px { px: new_a });
+                set(children, &b_id, Span::Px { px: total - new_a });
+            }
             (Some(Span::Px { .. }), _) => set(children, &a_id, Span::Px { px: new_a.round() }),
             (_, Some(Span::Px { .. })) => set(children, &b_id, Span::Px { px: (total - new_a).round() }),
             _ => {
